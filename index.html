@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel Spreadsheet Sorter</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Excel Spreadsheet Sorter</h1>
+        <p class="subtitle">Upload an Excel file and sort by any column header</p>
+        
+        <div class="upload-section">
+            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
+            <button id="uploadBtn" onclick="handleFileUpload()">Upload File</button>
+            <span id="fileName" class="file-name"></span>
+        </div>
+
+        <div id="errorMsg" class="error-message"></div>
+
+        <div id="tableSection" class="table-section" style="display: none;">
+            <div class="controls">
+                <label for="sortColumn">Sort by Column:</label>
+                <select id="sortColumn">
+                    <option value="">-- Select Column --</option>
+                </select>
+                
+                <select id="sortOrder">
+                    <option value="asc">Ascending (A-Z)</option>
+                    <option value="desc">Descending (Z-A)</option>
+                </select>
+                
+                <button onclick="sortTable()" class="sort-btn">Sort</button>
+                <button onclick="resetData()" class="reset-btn">Reset</button>
+            </div>
+
+            <div class="table-container">
+                <table id="dataTable">
+                    <thead></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
