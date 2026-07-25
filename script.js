@@ -25,6 +25,10 @@ function handleFileUpload() {
                 originalData = rows.filter(row => row.some(cell => cell)); // Remove empty rows
             } else {
                 // Handle Excel files
+                if (typeof XLSX === 'undefined') {
+                    showError('XLSX library is not loaded. Please refresh the page and try again.');
+                    return;
+                }
                 workbook = XLSX.read(data, { type: 'binary' });
                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                 originalData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
