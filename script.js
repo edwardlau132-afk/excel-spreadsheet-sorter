@@ -1,173 +1,174 @@
-let originalData = [];
-let currentData = [];
+// Excel Searcher - fully client-side, field-specific search
+// Reads .xls/.xlsx/.csv entirely in the browser (no backend/server involved).
+(() => {
+  const fileInput = document.getElementById('file-input');
+  const info = document.getElementById('info');
+  const uploadInfo = document.getElementById('upload-info');
+  const resultsBody = document.getElementById('results-body');
+  const clearBtn = document.getElementById('clear-filters');
 
-function handleFileUpload() {
-    const fileInput = document.getElementById('fileInput');
-    const file = fileInput.files[0];
-    
-    if (!file) {
-        showError('Please select a file');
-        return;
+  // Fixed column order: 1st column in the file -> code, 2nd -> chinese_title, etc.
+  // Mapping is by POSITION, not by header text, since the real file's header
+  // row may not literally say "code"/"singer"/etc.
+  const fields = ['code', 'chinese_title', 'singer', 'pinYin', 'cantonese', 'words'];
+  const inputs = {};
+  fields.forEach(f => inputs[f] = document.getElementById('search-' + f));
+
+  let allData = [];
+
+  function setInfo(t) {
+    info.textContent = t;
+    uploadInfo.textContent = t;
+  }
+
+  function renderRows(rows) {
+    resultsBody.innerHTML = '';
+    if (!rows || rows.length === 0) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = fields.length;
+      td.textContent = 'No results';
+      td.style.color = '#666';
+      tr.appendChild(td);
+      resultsBody.appendChild(tr);
+      return;
     }
+    const frag = document.createDocumentFragment();
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      fields.forEach(k => {
+        const td = document.createElement('td');
+        td.textContent = r[k] ?? '';
+        tr.appendChild(td);
+      });
+      frag.appendChild(tr);
+    });
+    resultsBody.appendChild(frag);
+  }
 
-    const reader = new FileReader();
-    
-    reader.onload = function(e) {
-        try {
-            const data = e.target.result;
-            let workbook;
-            
-            if (file.name.endsWith('.csv')) {
-                // Handle CSV
-                const rows = data.split('\n').map(row => 
-                    row.split(',').map(cell => cell.trim())
-                );
-                originalData = rows.filter(row => row.some(cell => cell)); // Remove empty rows
-            } else {
-                // Handle Excel files
-                if (typeof XLSX === 'undefined') {
-                    showError('XLSX library is not loaded. Please refresh the page and try again.');
-                    return;
-                }
-                workbook = XLSX.read(data, { type: 'binary' });
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                originalData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-            }
-            
-            if (originalData.length === 0) {
-                showError('The file appears to be empty');
-                return;
-            }
-            
-            currentData = JSON.parse(JSON.stringify(originalData));
-            displayTable();
-            populateSortColumns();
-            document.getElementById('fileName').textContent = `✓ Loaded: ${file.name}`;
-            clearError();
-        } catch (error) {
-            showError(`Error reading file: ${error.message}`);
-        }
+  function collectParams() {
+    const params = {};
+    fields.forEach(k => {
+      const v = inputs[k].value.trim().toLowerCase();
+      if (v) params[k] = v;
+    });
+    return params;
+  }
+
+  function filterRows(params) {
+    if (allData.length === 0) return [];
+    const paramKeys = Object.keys(params);
+    if (paramKeys.length === 0) return allData;
+
+    return allData.filter(row => {
+      return paramKeys.every(key => {
+        const cellValue = String(row[key] ?? '').toLowerCase();
+        return cellValue.includes(params[key]);
+      });
+    });
+  }
+
+  let timer;
+  function debounce(fn, ms = 200) {
+    return (...args) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn(...args), ms);
     };
-    
-    if (file.name.endsWith('.csv')) {
-        reader.readAsText(file);
+  }
+
+  const doSearch = debounce(() => {
+    const params = collectParams();
+    const results = filterRows(params);
+    const paramKeys = Object.keys(params);
+    if (paramKeys.length > 0) {
+      setInfo(`${results.length} / ${allData.length} matched`);
     } else {
-        reader.readAsBinaryString(file);
+      setInfo(`${allData.length} rows`);
     }
-}
+    renderRows(results);
+  }, 180);
 
-function displayTable() {
-    const table = document.getElementById('dataTable');
-    const thead = table.querySelector('thead');
-    const tbody = table.querySelector('tbody');
-    
-    thead.innerHTML = '';
-    tbody.innerHTML = '';
-    
-    if (currentData.length === 0) return;
-    
-    // Create header row
-    const headerRow = document.createElement('tr');
-    const headers = currentData[0];
-    
-    headers.forEach(header => {
-        const th = document.createElement('th');
-        th.textContent = header || 'Column';
-        headerRow.appendChild(th);
-    });
-    
-    thead.appendChild(headerRow);
-    
-    // Create data rows
-    for (let i = 1; i < currentData.length; i++) {
-        const row = document.createElement('tr');
-        const rowData = currentData[i];
-        
-        rowData.forEach(cell => {
-            const td = document.createElement('td');
-            td.textContent = cell || '';
-            row.appendChild(td);
-        });
-        
-        tbody.appendChild(row);
-    }
-    
-    // Show table section
-    document.getElementById('tableSection').style.display = 'block';
-}
+  // Turn an array-of-arrays (first row = header, rest = data) into
+  // objects keyed by our fixed field names, using column POSITION.
+  function rowsToObjects(rowsArr) {
+    const dataRows = rowsArr.slice(1); // skip header row
+    return dataRows
+      .map(row => {
+        const obj = {};
+        fields.forEach((f, i) => { obj[f] = row[i] !== undefined && row[i] !== null ? String(row[i]).trim() : ''; });
+        return obj;
+      })
+      .filter(obj => fields.some(f => obj[f])); // drop fully-empty rows
+  }
 
-function populateSortColumns() {
-    const sortColumn = document.getElementById('sortColumn');
-    sortColumn.innerHTML = '<option value="">-- Select Column --</option>';
-    
-    if (currentData.length > 0) {
-        const headers = currentData[0];
-        headers.forEach((header, index) => {
-            const option = document.createElement('option');
-            option.value = index;
-            option.textContent = header || `Column ${index + 1}`;
-            sortColumn.appendChild(option);
-        });
-    }
-}
+  function parseCSV(text) {
+    // Simple CSV split (handles plain comma-separated files; does not handle
+    // quoted commas inside fields).
+    const lines = text.split(/\r?\n/).filter(l => l.length > 0);
+    const rowsArr = lines.map(line => line.split(',').map(cell => cell.trim()));
+    return rowsToObjects(rowsArr);
+  }
 
-function sortTable() {
-    const columnIndex = parseInt(document.getElementById('sortColumn').value);
-    const sortOrder = document.getElementById('sortOrder').value;
-    
-    if (columnIndex === '' || isNaN(columnIndex)) {
-        showError('Please select a column to sort by');
-        return;
+  function parseExcel(binaryData) {
+    if (typeof XLSX === 'undefined') {
+      throw new Error('XLSX library is not loaded. Please refresh the page and try again.');
     }
-    
-    clearError();
-    
-    // Sort data (keeping header row in place)
-    const headerRow = currentData[0];
-    const dataRows = currentData.slice(1);
-    
-    dataRows.sort((a, b) => {
-        let aVal = a[columnIndex] || '';
-        let bVal = b[columnIndex] || '';
-        
-        // Try to convert to numbers for numeric sorting
-        const aNum = parseFloat(aVal);
-        const bNum = parseFloat(bVal);
-        
-        if (!isNaN(aNum) && !isNaN(bNum)) {
-            return sortOrder === 'asc' ? aNum - bNum : bNum - aNum;
-        }
-        
-        // String comparison
-        aVal = String(aVal).toLowerCase();
-        bVal = String(bVal).toLowerCase();
-        
-        if (sortOrder === 'asc') {
-            return aVal.localeCompare(bVal);
+    const workbook = XLSX.read(binaryData, { type: 'binary' });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    // header: 1 -> array-of-arrays, so we control the field mapping ourselves
+    // instead of relying on the file's actual header text.
+    const rowsArr = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+    return rowsToObjects(rowsArr);
+  }
+
+  function uploadFile(file) {
+    setInfo(`Reading ${file.name}...`);
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        let data = [];
+        if (file.name.toLowerCase().endsWith('.csv')) {
+          data = parseCSV(e.target.result);
         } else {
-            return bVal.localeCompare(aVal);
+          data = parseExcel(e.target.result);
         }
-    });
-    
-    currentData = [headerRow, ...dataRows];
-    displayTable();
-}
 
-function resetData() {
-    currentData = JSON.parse(JSON.stringify(originalData));
-    document.getElementById('sortColumn').value = '';
-    document.getElementById('sortOrder').value = 'asc';
-    displayTable();
-    clearError();
-}
+        if (data.length === 0) {
+          setInfo('The file appears to be empty');
+          return;
+        }
 
-function showError(message) {
-    const errorMsg = document.getElementById('errorMsg');
-    errorMsg.textContent = message;
-    errorMsg.classList.add('show');
-}
+        allData = data;
+        fields.forEach(k => inputs[k].disabled = false);
+        setInfo(`Loaded ${data.length} rows`);
+        doSearch();
+      } catch (error) {
+        setInfo('Error reading file: ' + error.message);
+      }
+    };
 
-function clearError() {
-    const errorMsg = document.getElementById('errorMsg');
-    errorMsg.classList.remove('show');
-}
+    reader.onerror = () => setInfo('Error reading file.');
+
+    if (file.name.toLowerCase().endsWith('.csv')) {
+      reader.readAsText(file);
+    } else {
+      reader.readAsBinaryString(file);
+    }
+  }
+
+  // Start with inputs disabled until a file is loaded.
+  fields.forEach(k => inputs[k].disabled = true);
+
+  fields.forEach(k => inputs[k].addEventListener('input', () => doSearch()));
+  clearBtn.addEventListener('click', () => {
+    fields.forEach(k => inputs[k].value = '');
+    doSearch();
+  });
+
+  fileInput.addEventListener('change', (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    uploadFile(f);
+  });
+})();
