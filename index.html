@@ -45,6 +45,18 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="script.js"></script>
+    <script>
+        // Wait for XLSX to load, then load script.js
+        function loadScriptWhenReady() {
+            if (typeof XLSX !== 'undefined') {
+                var script = document.createElement('script');
+                script.src = 'script.js';
+                document.body.appendChild(script);
+            } else {
+                setTimeout(loadScriptWhenReady, 50);
+            }
+        }
+        loadScriptWhenReady();
+    </script>
 </body>
 </html>
